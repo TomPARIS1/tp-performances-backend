@@ -2,13 +2,13 @@ Vous pouvez utiliser ce [GSheets](https://docs.google.com/spreadsheets/d/13Hw27U
 
 ## Question 2 : Utilisation Server Timing API
 
-**Temps de chargement initial de la page** : TEMPS
+**Temps de chargement initial de la page** : 31.3s
 
 **Choix des méthodes à analyser** :
 
-- `METHOD_1` TEMPS
-- `METHOD_2` TEMPS
-- `METHOD_3` TEMPS
+- `getCheapestRoom` 16.39s
+- `getMeta` 4.12s
+- `getReviews` 9.01s
 
 
 

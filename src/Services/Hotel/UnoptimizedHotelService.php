@@ -4,11 +4,13 @@ namespace App\Services\Hotel;
 
 use App\Common\FilterException;
 use App\Common\SingletonTrait;
+use App\Common\Timers;
 use App\Entities\HotelEntity;
 use App\Entities\RoomEntity;
 use App\Services\Room\RoomService;
 use Exception;
 use PDO;
+
 
 /**
  * Une classe utilitaire pour récupérer les données des magasins stockés en base de données
@@ -44,6 +46,9 @@ class UnoptimizedHotelService extends AbstractHotelService {
    * @return string|null
    */
   protected function getMeta ( int $userId, string $key ) : ?string {
+    $timer = Timers::getInstance();
+    $timerId = $timer->startTimer('getMeta');
+
     $db = $this->getDB();
     $stmt = $db->prepare( "SELECT * FROM wp_usermeta" );
     $stmt->execute();
@@ -54,7 +59,8 @@ class UnoptimizedHotelService extends AbstractHotelService {
       if ( $row['user_id'] === $userId && $row['meta_key'] === $key )
         $output = $row['meta_value'];
     }
-    
+
+    $timer->endTimer('getMeta', $timerId);
     return $output;
   }
   
@@ -95,6 +101,8 @@ class UnoptimizedHotelService extends AbstractHotelService {
    * @noinspection PhpUnnecessaryLocalVariableInspection
    */
   protected function getReviews ( HotelEntity $hotel ) : array {
+    $timer = Timers::getInstance();
+    $timerId = $timer->startTimer('getReviews');
     // Récupère tous les avis d'un hotel
     $stmt = $this->getDB()->prepare( "SELECT * FROM wp_posts, wp_postmeta WHERE wp_posts.post_author = :hotelId AND wp_posts.ID = wp_postmeta.post_id AND meta_key = 'rating' AND post_type = 'review'" );
     $stmt->execute( [ 'hotelId' => $hotel->getId() ] );
@@ -109,7 +117,8 @@ class UnoptimizedHotelService extends AbstractHotelService {
       'rating' => round( array_sum( $reviews ) / count( $reviews ) ),
       'count' => count( $reviews ),
     ];
-    
+
+    $timer->endTimer('getReviews', $timerId);
     return $output;
   }
   
@@ -133,6 +142,8 @@ class UnoptimizedHotelService extends AbstractHotelService {
    * @return RoomEntity
    */
   protected function getCheapestRoom ( HotelEntity $hotel, array $args = [] ) : RoomEntity {
+    $timer = Timers::getInstance();
+    $timerId = $timer->startTimer('getCheapestRoom');
     // On charge toutes les chambres de l'hôtel
     $stmt = $this->getDB()->prepare( "SELECT * FROM wp_posts WHERE post_author = :hotelId AND post_type = 'room'" );
     $stmt->execute( [ 'hotelId' => $hotel->getId() ] );
@@ -190,7 +201,8 @@ class UnoptimizedHotelService extends AbstractHotelService {
       if ( intval( $room->getPrice() ) < intval( $cheapestRoom->getPrice() ) )
         $cheapestRoom = $room;
     endforeach;
-    
+
+    $timer->endTimer('getCheapestRoom', $timerId);
     return $cheapestRoom;
   }
   
@@ -253,7 +265,7 @@ class UnoptimizedHotelService extends AbstractHotelService {
       if ( $hotel->getDistance() > $args['distance'] )
         throw new FilterException( "L'hôtel est en dehors du rayon de recherche" );
     }
-    
+
     return $hotel;
   }
   

@@ -45,28 +45,29 @@ class UnoptimizedHotelService extends AbstractHotelService {
    * Récupère une méta-donnée de l'instance donnée
    *
    * @param int    $userId
-   * @param string $key
    *
-   * @return string|null
+   * @return array|null
    */
-  protected function getMeta ( int $userId, string $key ) : ?string {
+  protected function getMeta ( int $userId ) : ?array {
     $timer = Timers::getInstance();
     $timerId = $timer->startTimer('getMeta');
 
     $db = $this->getDB();
-    $stmt = $db->prepare( "SELECT * FROM wp_usermeta" );
+    $stmt = $db->prepare( "SELECT meta_key,meta_value FROM wp_usermeta WHERE user_id = :userid");
+    $stmt->bindParam('userid', $userId, PDO::PARAM_INT);
+
     $stmt->execute();
-    
-    $result = $stmt->fetchAll( PDO::FETCH_ASSOC );
-    $output = null;
-    foreach ( $result as $row ) {
-      if ( $row['user_id'] === $userId && $row['meta_key'] === $key )
-        $output = $row['meta_value'];
+
+    $results = $stmt->fetchAll( PDO::FETCH_ASSOC );
+    $output = [];
+
+    foreach($results as $result){
+      $output[$result['meta_key']] = $result['meta_value'];
     }
 
     $timer->endTimer('getMeta', $timerId);
+
     return $output;
-    //à modif
   }
   
   
@@ -79,18 +80,21 @@ class UnoptimizedHotelService extends AbstractHotelService {
    * @noinspection PhpUnnecessaryLocalVariableInspection
    */
   protected function getMetas ( HotelEntity $hotel ) : array {
+
+    $data = $this->getMeta($hotel->getId());
+
     $metaDatas = [
       'address' => [
-        'address_1' => $this->getMeta( $hotel->getId(), 'address_1' ),
-        'address_2' => $this->getMeta( $hotel->getId(), 'address_2' ),
-        'address_city' => $this->getMeta( $hotel->getId(), 'address_city' ),
-        'address_zip' => $this->getMeta( $hotel->getId(), 'address_zip' ),
-        'address_country' => $this->getMeta( $hotel->getId(), 'address_country' ),
+        'address_1' => $data['address_1'],
+        'address_2' => $data['address_2'],
+        'address_city' => $data['address_city'],
+        'address_zip' => $data['address_zip'],
+        'address_country' => $data['address_country'],
       ],
-      'geo_lat' =>  $this->getMeta( $hotel->getId(), 'geo_lat' ),
-      'geo_lng' =>  $this->getMeta( $hotel->getId(), 'geo_lng' ),
-      'coverImage' =>  $this->getMeta( $hotel->getId(), 'coverImage' ),
-      'phone' =>  $this->getMeta( $hotel->getId(), 'phone' ),
+      'geo_lat' => $data['geo_lat'],
+      'geo_lng' =>  $data['geo_lng'],
+      'coverImage' =>  $data['coverImage'],
+      'phone' =>  $data['phone'],
     ];
     
     return $metaDatas;
@@ -150,85 +154,102 @@ class UnoptimizedHotelService extends AbstractHotelService {
     $timer = Timers::getInstance();
     $timerId = $timer->startTimer('getCheapestRoom');
     // On charge toutes les chambres de l'hôtel
-    $stmt = $this->getDB()->prepare( "SELECT * FROM wp_posts WHERE post_author = :hotelId AND post_type = 'room'" );
-    $stmt->execute( [ 'hotelId' => $hotel->getId() ] );
-    
+
     /**
      * On convertit les lignes en instances de chambres (au passage ça charge toutes les données).
      *
      * @var RoomEntity[] $rooms ;
      */
-    $rooms = array_map( function ( $row ) {
-      return $this->getRoomService()->get( $row['ID'] );
-    }, $stmt->fetchAll( PDO::FETCH_ASSOC ) );
-    
-    // On exclut les chambres qui ne correspondent pas aux critères
-    $filteredRooms = [];
 
-    $query = "SELECT 
-        surfaceData.meta_value AS surface,
-        priceData.meta_value AS price,
-        bedroomsData.meta_value AS bedroomsCount,
-        bathroomsData.meta_value AS bathroomsCount,
-        typeData.meta_value AS type
-    FROM wp_posts AS posts
-    INNER JOIN tp.wp_postmeta AS surfaceData ON posts.ID = surfaceData.post_id AND surfaceData.meta_key = 'surface'
-    INNER JOIN tp.wp_postmeta AS priceData ON posts.ID = priceData.post_id AND priceData.meta_key = 'price'
-    INNER JOIN tp.wp_postmeta AS bedroomsData ON posts.ID = bedroomsData.post_id AND bedroomsData.meta_key = 'bedrooms_count'
-    INNER JOIN tp.wp_postmeta AS bathroomsData ON posts.ID = bathroomsData.post_id AND bathroomsData.meta_key = 'bathrooms_count'
-    INNER JOIN tp.wp_postmeta AS typeData ON posts.ID = typeData.post_id AND typeData.meta_key = 'type'";
+      $query = "SELECT post.ID,
+        post.post_title AS title,
+        priceData.meta_value AS price, 
+        surfaceData.meta_value AS surface, 
+        typeData.meta_value AS type, 
+        bedroomsCountData.meta_value AS bedrooms, 
+        bathroomsCountData.meta_value AS bathrooms
+        FROM wp_posts AS post
+        INNER JOIN wp_postmeta AS priceData ON post.ID = PriceData.post_id AND PriceData.meta_key = 'price'
+        INNER JOIN wp_postmeta AS surfaceData ON post.ID = SurfaceData.post_id AND SurfaceData.meta_key = 'surface'
+        INNER JOIN wp_postmeta AS typeData ON post.ID = TypeData.post_id AND TypeData.meta_key = 'type'
+        INNER JOIN wp_postmeta AS bedroomsCountData ON post.ID = BedroomsCountData.post_id AND BedroomsCountData.meta_key = 'bedrooms_count'
+        INNER JOIN wp_postmeta AS bathroomsCountData ON post.ID = BathroomsCountData.post_id AND BathroomsCountData.meta_key = 'bathrooms_count'";
 
-    $whereClauses = [];
+      $whereClauses = [];
 
-    if ( isset( $args['surface']['min'] ) )
-        $whereClauses[] = 'surfaceData.meta_value >= :min';
-    if ( isset( $args['surface']['max'] ) )
-        $whereClauses[] = 'surfaceData.meta_value <= :max';
-    if ( isset( $args['price']['min'] ) )
-        $whereClauses[] = 'priceData.meta_value >= :min';
-    if ( isset( $args['price']['max'] ) )
-        $whereClauses[] = 'priceData.meta_value <= :max';
-    if ( isset( $args['rooms'] ) )
-        $whereClauses[] = 'bedroomsData.meta_value >= :rooms';
-    if ( isset( $args['bathRooms'] ) )
-        $whereClauses[] = 'bathroomsData.meta_value >= :rooms';
-    if ( isset( $args['types'] ) && ! empty( $args['types'] ) )
-        $whereClauses[] = 'typeData.meta_value = :types';
+      if (isset ($args['surface']['min'])){
+          $whereClauses[] = "surfaceData.meta_value >= :surfaceMin";
+      }
+      if (isset ($args['surface']['max'])){
+          $whereClauses[] =  "surfaceData.meta_value <= :surfaceMax";
+      }
+      if (isset ($args['price']['min'])){
+          $whereClauses[] = "priceData.meta_value >= :priceMin";
+      }
+      if (isset ($args['price']['max'])){
+          $whereClauses[] =  "priceData.meta_value <= :priceMax";
+      }
+      if (isset ($args['rooms'])){
+          $whereClauses[] =  "bedroomsCountData.meta_value >= :rooms";
+      }
+      if (isset ($args['bathRooms'])){
+          $whereClauses[] =  "bathroomsCountData.meta_value >= :bathRooms";
+      }
+      if (isset ($args['types']) && count($args['types']) > 0){
+          $whereClauses[] =  'typeData.meta_value IN ("'.implode('","',$args['types']).'")';
+      }
 
-    if ( count($whereClauses) > 0 )
-        $query .= " WHERE " . implode( ' AND ', $whereClauses );
+      $query .=" WHERE post_author = :hotelId AND post_type = 'room'";
 
-    $stmt = $this->getDB()->prepare( $query );
+      if ( count($whereClauses) > 0 ) {
+          $query .= " AND " . implode(' AND ', $whereClauses);
+      }
 
-    if ( isset( $args['surface']['min'] ) )
-        $stmt->bindParam('min', $args['surface']['min'], PDO::PARAM_INT);
-    if ( isset( $args['surface']['max'] ) )
-        $stmt->bindParam('max', $args['surface']['max'], PDO::PARAM_INT);
-    if ( isset( $args['price']['min'] ) )
-        $stmt->bindParam('min', $args['price']['min'], PDO::PARAM_STR_CHAR);
-    if ( isset( $args['price']['max'] ) )
-        $stmt->bindParam('max', $args['price']['max'], PDO::PARAM_STR_CHAR);
-    if ( isset( $args['rooms'] ) )
-        $stmt->bindParam('rooms', $args['rooms'], PDO::PARAM_INT);
-    if ( isset( $args['bathRooms'] ) )
-        $stmt->bindParam('rooms', $args['bathRooms'], PDO::PARAM_INT);
-    if ( isset( $args['types'] ) )
-        $stmt->bindParam('types', $args['types'], PDO::PARAM_STR_CHAR);
+      $stmt = $this->getDB()->prepare( $query );
 
-    $stmt->execute();
-    $room = $stmt->fetchAll();
+      if ( isset( $args['surface']['min'] ) ) {
+          $stmt->bindParam('surfaceMin', $args['surface']['min'], PDO::PARAM_INT);
+      }
 
-    // Si aucune chambre ne correspond aux critères, alors on déclenche une exception pour retirer l'hôtel des résultats finaux de la méthode list().
-    if ( $room == null)
-      throw new FilterException( "Aucune chambre ne correspond aux critères" );
+      if ( isset( $args['surface']['max'] ) ) {
+          $stmt->bindParam('surfaceMax', $args['surface']['max'], PDO::PARAM_INT);
+      }
 
-    var_dump($room);
+      if ( isset( $args['price']['min'] ) ) {
+          $stmt->bindParam('priceMin', $args['price']['min'], PDO::PARAM_INT);
+      }
 
-    // Trouve le prix le plus bas dans les résultats de recherche
-    $cheapestRoom = ( new RoomEntity() );
+      if ( isset( $args['price']['max'] ) ) {
+          $stmt->bindParam('priceMax', $args['price']['max'], PDO::PARAM_INT);
+      }
 
-    $timer->endTimer('getCheapestRoom', $timerId);
-    return $cheapestRoom;
+      if (isset ($args['rooms'])){
+          $stmt->bindParam('rooms', $args['rooms'], PDO::PARAM_INT);
+      }
+
+      if (isset ($args['bathRooms'])){
+          $stmt->bindParam('bathRooms', $args['bathRooms'], PDO::PARAM_INT);
+      }
+
+      $stmt->bindValue('hotelId', $hotel->getId(), PDO::PARAM_INT);
+      $stmt->execute();
+
+      $room = $stmt->fetch();
+
+      if ( !$room )
+          throw new FilterException( "Aucune chambre ne correspond aux critères" );
+
+      $cheapestRoom = (new RoomEntity())
+          ->setId($room['ID'])
+          ->setTitle($room ['title'])
+          ->setSurface($room ['surface'])
+          ->setPrice($room ['price'])
+          ->setBedRoomsCount($room ['bedrooms'])
+          ->setBathRoomsCount($room ['bathrooms'])
+          ->setType($room ['type']);
+
+      $timer->endTimer('getCheapestRoom', $timerId);
+      return $cheapestRoom;
   }
   
   

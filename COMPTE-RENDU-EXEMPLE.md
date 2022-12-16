@@ -202,27 +202,101 @@ ALTER TABLE `wp_usermeta` ADD INDEX(`user_id`);
 ### Table `hotels` (200 lignes)
 
 ```SQL
--- REQ SQL CREATION TABLE
+CREATE TABLE `hotels` (
+	`id` bigint(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	`name` varchar(255) NOT NULL,
+	`email` varchar(255) NOT NULL,
+	`address_1` varchar(255) NOT NULL,
+	`address_2` varchar(255) NOT NULL,
+	`address_city` varchar(255) NOT NULL,
+	`address_zipcode` varchar(255) NOT NULL,
+	`address_country` varchar(100) NOT NULL,
+	`geo_lat` float NOT NULL,
+	`geo_lng` float NOT NULL,
+	`phone` varchar(255) NOT NULL,
+	`coverImage` longtext NOT NULL
+);
 ```
 
 ```SQL
--- REQ SQL INSERTION DONNÉES DANS LA TABLE
+INSERT INTO hotels (
+ SELECT
+	user.ID as id,
+	user.display_name as name,
+	user.user_email as email,
+	address_1_meta.meta_value as address_1,
+	address_2_meta.meta_value as address_2,
+	address_city_meta.meta_value as address_city,
+	address_zip_meta.meta_value as address_zip,
+	address_country_meta.meta_value as hotel_address_country,
+	geo_lat_meta.meta_value as geo_lat,
+	geo_lng_meta.meta_value as geo_lng,
+	phone_meta.meta_value as phone,
+	coverImage_meta.meta_value as coverImage
+ FROM wp_users as USER
+	INNER JOIN wp_usermeta as address_1_meta ON address_1_meta.user_id = user.ID AND address_1_meta.meta_key = 'address_1'
+	INNER JOIN wp_usermeta as address_2_meta ON address_2_meta.user_id = user.ID AND address_2_meta.meta_key = 'address_2'
+	INNER JOIN wp_usermeta as address_city_meta ON address_city_meta.user_id = user.ID AND address_city_meta.meta_key = 'address_city'
+	INNER JOIN wp_usermeta as address_zip_meta ON address_zip_meta.user_id = user.ID AND address_zip_meta.meta_key = 'address_zip'
+	INNER JOIN wp_usermeta as address_country_meta ON address_country_meta.user_id = user.ID AND address_country_meta.meta_key = 'address_country'
+	INNER JOIN wp_usermeta as geo_lat_meta ON geo_lat_meta.user_id = user.ID AND geo_lat_meta.meta_key = 'geo_lat'
+	INNER JOIN wp_usermeta as geo_lng_meta ON geo_lng_meta.user_id = user.ID AND geo_lng_meta.meta_key = 'geo_lng'
+	INNER JOIN wp_usermeta as coverImage_meta ON coverImage_meta.user_id = user.ID AND coverImage_meta.meta_key = 'coverImage'
+	INNER JOIN wp_usermeta as phone_meta ON phone_meta.user_id = user.ID AND phone_meta.meta_key = 'phone'
+ GROUP BY USER.ID
+);
 ```
 
 ### Table `rooms` (1 200 lignes)
 
 ```SQL
--- REQ SQL CREATION TABLE
+CREATE TABLE `rooms` (
+	`id` bigint(255) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	`id_hotel` bigint(255) UNSIGNED NOT NULL,
+	`title` varchar(255) NOT NULL,
+	`price` float NOT NULL,
+	`image` varchar(400) NOT NULL,
+	`bedrooms` int UNSIGNED NOT NULL,
+	`bathrooms` int UNSIGNED NOT NULL,
+	`surface` FLOAT UNSIGNED NOT NULL,
+	`type` varchar(255) NOT NULL,
+	FOREIGN KEY (`id_hotel`) REFERENCES `hotels`(`id`)
+);
 ```
 
 ```SQL
--- REQ SQL INSERTION DONNÉES DANS LA TABLE
+INSERT INTO rooms(
+ SELECT
+	post.ID as id,
+	post.post_author as hotel_id,
+	post.post_title as title,
+	priceData.meta_value as price,
+	img_meta.meta_value as image,
+	roomsData.meta_value as bedrooms,
+	bathroomsData.meta_value as bathrooms,
+	surfaceData.meta_value as surface,
+	typeData.meta_value as type
+ FROM wp_posts as POST
+	INNER JOIN tp.wp_postmeta as priceData ON post.ID = priceData.post_id AND priceData.meta_key = 'price'
+	INNER JOIN wp_postmeta as surfaceData ON surfaceData.post_id = post.ID AND surfaceData.meta_key = 'surface'
+	INNER JOIN wp_postmeta as roomsData ON roomsData.post_id = post.ID AND roomsData.meta_key = 'bedrooms_count'
+	INNER JOIN wp_postmeta as bathRoomsData ON bathRoomsData.post_id = post.ID AND bathroomsData.meta_key = 'bathrooms_count'
+	INNER JOIN wp_postmeta as typeData ON typeData.post_id = post.ID AND typeData.meta_key = 'type'
+	INNER JOIN wp_postmeta as img_meta ON img_meta.post_id = post.ID AND img_meta.meta_key = 'coverImage'
+ WHERE POST.post_type = 'room'
+ GROUP BY POST.ID
+);
 ```
 
 ### Table `reviews` (19 700 lignes)
 
 ```SQL
--- REQ SQL CREATION TABLE
+CREATE TABLE `reviews` (
+	`id` bigint(255) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	`id_hotel` bigint(255) NOT NULL,
+	`review` int NOT NULL,
+	FOREIGN KEY (`id_hotel`) REFERENCES `hotels`(`id`);
+);
 ```
 
 ```SQL

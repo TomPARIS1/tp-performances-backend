@@ -37,13 +37,13 @@ Vous pouvez utiliser ce [GSheets](https://docs.google.com/spreadsheets/d/13Hw27U
 - **Avant** 4.12s
 
 ```sql
--- SELECT * FROM wp_usermeta
+SELECT * FROM wp_usermeta
 ```
 
 - **Après** 171.96ms
 
 ```sql
--- SELECT meta_key,meta_value FROM wp_usermeta WHERE user_id = :userid
+SELECT meta_key,meta_value FROM wp_usermeta WHERE user_id = :userid
 ```
 
 
@@ -53,13 +53,13 @@ Vous pouvez utiliser ce [GSheets](https://docs.google.com/spreadsheets/d/13Hw27U
 - **Avant** 16.39s
 
 ```sql
--- SELECT * FROM wp_posts WHERE post_author = :hotelId AND post_type = 'room'
+SELECT * FROM wp_posts WHERE post_author = :hotelId AND post_type = 'room'
 ```
 
 - **Après** 9.24s
 
 ```sql
--- SELECT post.ID,
+	SELECT post.ID,
         post.post_title AS title,
         priceData.meta_value AS price, 
         surfaceData.meta_value AS surface, 
@@ -81,13 +81,13 @@ Vous pouvez utiliser ce [GSheets](https://docs.google.com/spreadsheets/d/13Hw27U
 - **Avant** 9.01s
 
 ```sql
--- SELECT * FROM wp_posts, wp_postmeta WHERE wp_posts.post_author = :hotelId AND wp_posts.ID = wp_postmeta.post_id AND meta_key = 'rating' AND post_type = 'review'
+SELECT * FROM wp_posts, wp_postmeta WHERE wp_posts.post_author = :hotelId AND wp_posts.ID = wp_postmeta.post_id AND meta_key = 'rating' AND post_type = 'review'
 ```
 
 - **Après** 6.32s
 
 ```sql
--- SELECT ROUND(AVG(meta_value)) AS rating, COUNT(meta_value) AS count FROM wp_posts, wp_postmeta WHERE wp_posts.post_author = :hotelId AND wp_posts.ID = wp_postmeta.post_id AND meta_key = 'rating' AND post_type = 'review'
+SELECT ROUND(AVG(meta_value)) AS rating, COUNT(meta_value) AS count FROM wp_posts, wp_postmeta WHERE wp_posts.post_author = :hotelId AND wp_posts.ID = wp_postmeta.post_id AND meta_key = 'rating' AND post_type = 'review'
 ```
 
 
@@ -97,20 +97,70 @@ Vous pouvez utiliser ce [GSheets](https://docs.google.com/spreadsheets/d/13Hw27U
 |                              | **Avant** | **Après** |
 |------------------------------|-----------|-----------|
 | Nombre d'appels de `getDB()` | 2201      | 601       |
- | Temps de `getMeta`          | 4.12s     | 171.96ms  |
+| Temps de `getMeta`           | 4.12s     | 171.96ms  |
 
 ## Question 6 : Création d'un service basé sur une seule requête SQL
 
 |                              | **Avant** | **Après** |
 |------------------------------|-----------|-----------|
-| Nombre d'appels de `getDB()` | NOMBRE    | NOMBRE    |
-| Temps de chargement global   | TEMPS     | TEMPS     |
+| Nombre d'appels de `getDB()` | 601       | 1         |
+| Temps de chargement global   | 22.7s     | 4.34s     |
 
 **Requête SQL**
 
 ```SQL
--- GIGA REQUÊTE
--- INDENTATION PROPRE ET COMMENTAIRES SERONT APPRÉCIÉS MERCI !
+	SELECT
+		user.ID AS id,
+		user.display_name AS name,
+		address_1Data.meta_value as hotel_address_1,
+		address_2Data.meta_value as hotel_address_2,
+		address_cityData.meta_value as hotel_address_city,
+		address_zipData.meta_value as hotel_address_zip,
+		address_countryData.meta_value as hotel_address_country,
+		geo_latData.meta_value as geo_lat,
+		geo_lngData.meta_value as geo_lng,
+		phoneData.meta_value as phone,
+		coverImageData.meta_value as coverImage,
+		postData.ID as cheapestRoomid,
+		postData.price as price,
+		postData.surface as surface,
+		postData.bedroom as bedRoomsCount,
+		postData.bathroom as bathRoomsCount,
+		postData.type as type,
+		COUNT(reviewData.meta_value) as ratingCount,
+		AVG(reviewData.meta_value) as rating 
+        FROM  wp_users AS USER
+		INNER JOIN wp_usermeta as address_1Data ON address_1Data.user_id = USER.ID AND address_1Data.meta_key = 'address_1'
+		INNER JOIN wp_usermeta as address_2Data ON address_2Data.user_id = USER.ID AND address_2Data.meta_key = 'address_2'
+		INNER JOIN wp_usermeta as address_cityData ON address_cityData.user_id = USER.ID AND address_cityData.meta_key = 'address_city'
+		INNER JOIN wp_usermeta as address_zipData ON address_zipData.user_id = USER.ID AND address_zipData.meta_key = 'address_zip'
+		INNER JOIN wp_usermeta as address_countryData ON address_countryData.user_id = USER.ID AND address_countryData.meta_key = 'address_country'
+		INNER JOIN wp_usermeta as geo_latData ON geo_latData.user_id = USER.ID AND geo_latData.meta_key = 'geo_lat'
+		INNER JOIN wp_usermeta as geo_lngData ON geo_lngData.user_id = USER.ID AND geo_lngData.meta_key = 'geo_lng'
+		INNER JOIN wp_usermeta as coverImageData ON coverImageData.user_id = USER.ID AND coverImageData.meta_key = 'coverImage'
+		INNER JOIN wp_usermeta as phoneData ON phoneData.user_id = USER.ID AND phoneData.meta_key = 'phone'
+		INNER JOIN wp_posts as rating_postData ON rating_postData.post_author = USER.ID AND rating_postData.post_type = 'review'
+		INNER JOIN wp_postmeta as reviewData ON reviewData.post_id = rating_postData.ID AND reviewData.meta_key = 'rating'
+        INNER JOIN (SELECT
+			post.ID,
+			post.post_author,
+			MIN(CAST(priceData.meta_value AS UNSIGNED)) AS price,
+			CAST(surfaceData.meta_value  AS UNSIGNED) AS surface,
+			CAST(roomsData.meta_value AS UNSIGNED) AS bedroom,
+			CAST(bathRoomsData.meta_value AS UNSIGNED) AS bathroom,
+			typeData.meta_value AS type
+			FROM
+			tp.wp_posts AS post
+			INNER JOIN tp.wp_postmeta AS priceData ON post.ID = priceData.post_id AND priceData.meta_key = 'price'
+			INNER JOIN wp_postmeta as surfaceData ON surfaceData.post_id = post.ID AND surfaceData.meta_key = 'surface'
+			INNER JOIN wp_postmeta as roomsData ON roomsData.post_id = post.ID AND roomsData.meta_key = 'bedrooms_count'
+			INNER JOIN wp_postmeta as bathRoomsData ON bathRoomsData.post_id = post.ID AND bathRoomsData.meta_key = 'bathrooms_count'
+			INNER JOIN wp_postmeta as typeData ON typeData.post_id = post.ID AND typeData.meta_key = 'type'
+			WHERE post.post_type = 'room'
+			GROUP BY post.ID
+		) AS postData ON user.ID = postData.post_author
+        GROUP BY user.ID
+        ORDER BY `cheapestRoomId` ASC
 ```
 
 ## Question 7 : ajout d'indexes SQL
